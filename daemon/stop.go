@@ -93,6 +93,13 @@ func (daemon *Daemon) containerStop(ctx context.Context, ctr *container.Containe
 	defer cancel()
 
 	if status := <-ctr.Wait(subCtx, containertypes.WaitConditionNotRunning); status.Err() == nil {
+		// Replicate container status changes to the API
+		ctr.Lock()
+		defer ctr.Unlock()
+		if err := ctr.CommitInMemory(daemon.containersReplica); err != nil {
+			log.G(ctx).WithError(err).Warn("could not make state of container visible ot other queries")
+		}
+
 		// container did exit, so ignore any previous errors and return
 		return nil
 	}
@@ -120,6 +127,13 @@ func (daemon *Daemon) containerStop(ctx context.Context, ctr *container.Containe
 			return err
 		}
 		// container did exit, so ignore previous errors and continue
+	}
+
+	// Replicate container status changes to the API
+	ctr.Lock()
+	defer ctr.Unlock()
+	if err := ctr.CommitInMemory(daemon.containersReplica); err != nil {
+		log.G(ctx).WithError(err).Warn("could not make state of container visible ot other queries")
 	}
 
 	return nil
